@@ -14,38 +14,61 @@
  * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
  * Ответ будет приходить в поле {result}
  */
- import Api from '../tools/api';
+import * as R from 'ramda';
+import Api from '../tools/api';
 
- const api = new Api();
+const api = new Api();
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+const getAnimal = async (id) => {
+	const res = await api.get(`https://animals.tech/${id}`)(undefined);
+	return res.result;
+};
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+const getConvertedNumber = async (num) => {
+	const res = await api.get('https://api.tech/numbers/base', {
+		from: 10,
+		to: 2,
+		number: num.toString(),
+	});
+	return res.result;
+};
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+const processSequence = ({ value, writeLog, handleSuccess, handleError }) => {
+	const error = R.partial(handleError, ['ValidationError']);
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
+	const validateNumber = R.allPass([
+		R.compose(R.partialRight(R.lt, [10]), R.length),
+		R.compose(R.partialRight(R.gt, [2]), R.length),
+		R.compose(R.partialRight(R.gt, [0]), parseFloat),
+		(x) => /^\d+(?:\.\d+)?$/.test(x),
+	]);
 
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
+	const process = R.compose(
+		R.andThen(
+			R.compose(
+				R.andThen(handleSuccess),
+				getAnimal,
+				R.tap(writeLog),
+				(x) => x % 3,
+				R.tap(writeLog),
+				(x) => x ** 2,
+				R.tap(writeLog),
+				R.length,
+				R.tap(writeLog)
+			)
+		),
+		getConvertedNumber
+	);
 
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+	const success = R.compose(
+		R.tryCatch(process, handleError),
+		R.tap(writeLog),
+		Math.round,
+		parseFloat,
+		R.tap(writeLog)
+	);
+
+	R.ifElse(validateNumber, success, error)(value);
+};
 
 export default processSequence;
